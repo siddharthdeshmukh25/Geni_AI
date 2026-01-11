@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeni AI</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root { --bg: #0d1117; --card: #161b22; --text: #c9d1d9; --accent: #ff2e63; --border: #30363d; }
+        .light { --bg: #ffffff; --card: #f6f8fa; --text: #24292f; --border: #d0d7de; }
+        * { box-sizing: border-box; margin: 0; padding: 0; transition: 0.3s; }
+        body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; height: 100dvh; display: flex; justify-content: center; }
+        .app-container { width: 100%; max-width: 500px; background: var(--card); display: flex; flex-direction: column; height: 100%; border: 1px solid var(--border); }
+        .header { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+        .header h1 { font-size: 1.3rem; color: var(--accent); font-weight: 700; }
+        #chat-window { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; }
+        .bubble { max-width: 85%; padding: 12px 16px; border-radius: 18px; font-size: 15px; line-height: 1.4; }
+        .user { align-self: flex-end; background: var(--accent); color: white; border-bottom-right-radius: 2px; }
+        .bot { align-self: flex-start; background: var(--border); border-bottom-left-radius: 2px; }
+        .input-area { padding: 15px; background: var(--bg); border-top: 1px solid var(--border); display: flex; gap: 10px; padding-bottom: calc(15px + env(safe-area-inset-bottom)); }
+        input { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 25px; padding: 12px 20px; color: var(--text); outline: none; }
+        .send-btn { background: var(--accent); border: none; color: white; width: 45px; height: 45px; border-radius: 50%; cursor: pointer; }
+        .loader { font-size: 12px; color: var(--accent); padding: 0 20px 10px; display: none; }
+        .clear-btn { font-size: 0.8rem; background: none; border: 1px solid var(--accent); color: var(--accent); padding: 5px 10px; border-radius: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="header">
+            <h1>JENI ❤️</h1>
+            <button class="clear-btn" onclick="clearMemory()">Clear Chat</button>
+        </div>
+        <div id="chat-window"></div>
+        <div id="loader" class="loader">Jeni is thinking...</div>
+        <div class="input-area">
+            <input type="text" id="userInput" placeholder="Talk to Jeni..." autocomplete="off">
+            <button class="send-btn" onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
+        </div>
+    </div>
+
+    <script>
+        const chatWindow = document.getElementById('chat-window');
+        const userInput = document.getElementById('userInput');
+        const loader = document.getElementById('loader');
+
+        // DEVICE MEMORY: Get history from localStorage or start fresh
+        let history = JSON.parse(localStorage.getItem('jeni_memory')) || [];
+
+        function renderHistory() {
+            chatWindow.innerHTML = '';
+            if (history.length === 0) {
+                addBubble("Hmph! Finally you're here. Where were you all day? 🙄", 'bot');
+            }
+            history.forEach(msg => {
+                if (msg.role !== 'system') addBubble(msg.content, msg.role === 'user' ? 'user' : 'bot');
+            });
+        }
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            addBubble(text, 'user');
+            userInput.value = '';
+            history.push({ role: "user", content: text });
+            saveMemory();
+            
+            loader.style.display = 'block';
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+
+            try {
+                const res = await fetch("/.netlify/functions/chat", {
+                    method: "POST",
+                    body: JSON.stringify({ messages: history })
+                });
+                const data = await res.json();
+                const reply = data.choices[0].message.content;
+
+                addBubble(reply, 'bot');
+                history.push({ role: "assistant", content: reply });
+                saveMemory();
+            } catch (e) {
+                addBubble("Network error! Is the API key set in Netlify?", 'bot');
+            } finally {
+                loader.style.display = 'none';
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+            }
+        }
+
+        function addBubble(text, type) {
+            const div = document.createElement('div');
+            div.className = `bubble ${type}`;
+            div.innerText = text;
+            chatWindow.appendChild(div);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        function saveMemory() {
+            // Keep only last 20 messages to save space
+            if (history.length > 20) history = history.slice(-20);
+            localStorage.setItem('jeni_memory', JSON.stringify(history));
+        }
+
+        function clearMemory() {
+            localStorage.removeItem('jeni_memory');
+            history = [];
+            renderHistory();
+        }
+
+        userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+        renderHistory();
+    </script>
+</body>
+</html>
